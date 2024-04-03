@@ -257,23 +257,231 @@ def portfolio():
         # st.write(predictions)
         st.write("Dynamically Allocated Portfolio:")
         st.write(portfolio)
+        return portfolio
 
     portfolio_df = portfolio1()
     # portfolio_df= pd.DataFrame(portfolio_df)
     # # print(portfolio_df.type)
-    # st.session_state.portfolio_df = portfolio_df
+    st.session_state.portfolio_df = portfolio_df
 
     
 def analysis():    
-    st.title('Analysis')
+    # st.title('Analysis')
+    import streamlit as st
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from ta.momentum import RSIIndicator
+    from datetime import datetime, timedelta
+
+    # portfolio_df = st.session_state.portfolio_df
+
+    # Functions remain the same
+    def get_stock_data(stock_name, start_date, end_date):
+        stock_data = yf.download(stock_name, start=start_date, end=end_date)
+        return stock_data
+
+    def pct1_strategy(data):
+        buy_price = data['Close'] * 0.99
+        sell_price = data['Close'] * 1.02
+
+        signal = np.zeros(len(data))
+        transactions = []
+        for i in range(1, len(data)):
+            if data['Close'][i] < buy_price[i-1]:
+                signal[i] = 1
+                transactions.append(('Buy', data.index[i], data['Close'][i]))
+            elif data['Close'][i] > sell_price[i-1]:
+                signal[i] = -1
+                transactions.append(('Sell', data.index[i], data['Close'][i]))
+        return signal, transactions
+
+    def ema_strategy(data):
+        ema_20 = data['Close'].ewm(span=20, adjust=False).mean()
+        ema_50 = data['Close'].ewm(span=50, adjust=False).mean()
+
+        signal = np.where(ema_20 > ema_50, 1, 0)
+        signal = np.where(ema_20 < ema_50, -1, signal)
+        transactions = [('Buy', data.index[0], data['Close'][0])]
+        for i in range(1, len(data)):
+            if signal[i] == 1 and signal[i-1] != 1:
+                transactions.append(('Buy', data.index[i], data['Close'][i]))
+            elif signal[i] == -1 and signal[i-1] != -1:
+                transactions.append(('Sell', data.index[i], data['Close'][i]))
+        return signal, transactions
+
+    def smi_strategy(data):
+        high_14 = data['High'].rolling(window=14).max()
+        low_14 = data['Low'].rolling(window=14).min()
+
+        smi = ((data['Close'] - low_14) / (high_14 - low_14)) * 100
+        smi_signal = np.where(smi > 40, 1, 0)
+        smi_signal = np.where(smi < -40, -1, smi_signal)
+        transactions = [('Buy', data.index[0], data['Close'][0])]
+        for i in range(1, len(data)):
+            if smi_signal[i] == 1 and smi_signal[i-1] != 1:
+                transactions.append(('Buy', data.index[i], data['Close'][i]))
+            elif smi_signal[i] == -1 and smi_signal[i-1] != -1:
+                transactions.append(('Sell', data.index[i], data['Close'][i]))
+        return smi_signal, transactions
+
+    def rsi_strategy(data):
+        rsi = RSIIndicator(data['Close'], window=14)
+        rsi_signal = np.where(rsi.rsi() < 40, 1, 0)
+        rsi_signal = np.where(rsi.rsi() > 60, -1, rsi_signal)
+        transactions = [('Buy', data.index[0], data['Close'][0])]
+        for i in range(1, len(data)):
+            if rsi_signal[i] == 1 and rsi_signal[i-1] != 1:
+                transactions.append(('Buy', data.index[i], data['Close'][i]))
+            elif rsi_signal[i] == -1 and rsi_signal[i-1] != -1:
+                transactions.append(('Sell', data.index[i], data['Close'][i]))
+        return rsi_signal, transactions
+
+    def buy_hold_strategy(data):
+        signal = np.zeros(len(data))
+        signal[0] = 1  # Buy at start date
+        signal[-1] = -1  # Sell at end date
+        return signal
+
+    def calculate_returns(data, strategy_signal, initial_capital):
+        shares = 0
+        capital = initial_capital
+        for i in range(len(data)):
+            if strategy_signal[i] == 1:
+                shares += capital / data['Close'][i]
+                capital = 0
+            elif strategy_signal[i] == -1:
+                capital += shares * data['Close'][i]
+                shares = 0
+        final_portfolio_value = capital + shares * data['Close'].iloc[-1]
+        return final_portfolio_value
+
+    def calculate_cagr(initial_value, final_value, years):
+        cagr = ((final_value / initial_value) ** (1 / years) - 1) * 100
+        return round(cagr, 3)
+
+    def analysis_page():
+        st.title("Stock Trading Strategy Comparison")
+        
+        time_period = st.session_state.time_period
+        portfolio_df = st.session_state.portfolio_df
+        # time_period = st.number_input("Enter number of years")
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=time_period * 365)
+        initial_capital = st.session_state.investment_amount
+        # initial_capital = st.number_input("Enter initial capital:", value=10000.0)
+
+        # portfolio_df = pd.DataFrame({
+        #     'Name': ['BHARTIARTL.NS', 'BPCL.NS', 'ITC.NS'],
+        #     'Weight': [0.3, 0.4, 0.3]
+        # })
+
+        total_returns_optimal = 0
+        total_returns_control = 0
+        transaction_df_list = []
+
+        for index, row in portfolio_df.iterrows():
+            stock_name = row['Assets']
+            weight = row['Weights']
+
+            data = get_stock_data(stock_name, start_date, end_date)
+
+            # Calculate strategies and returns as before
+            pct1_signal, pct1_transactions = pct1_strategy(data)
+            ema_signal, ema_transactions = ema_strategy(data)
+            smi_signal, smi_transactions = smi_strategy(data)
+            rsi_signal, rsi_transactions = rsi_strategy(data)
+            buy_hold_signal = buy_hold_strategy(data)
+            control_strategy_signal = np.ones(len(data))
+
+            returns_pct1 = calculate_returns(data, pct1_signal, initial_capital * weight)
+            returns_ema = calculate_returns(data, ema_signal, initial_capital * weight)
+            returns_smi = calculate_returns(data, smi_signal, initial_capital * weight)
+            returns_rsi = calculate_returns(data, rsi_signal, initial_capital * weight)
+            returns_buy_hold = calculate_returns(data, buy_hold_signal, initial_capital * weight)
+            returns_control = calculate_returns(data, control_strategy_signal, initial_capital * weight)
+
+            max_returns = max(returns_pct1, returns_ema, returns_smi, returns_rsi, returns_buy_hold, returns_control)
+            total_returns_optimal += max_returns
+            total_returns_control += returns_control
+
+            if max_returns == returns_pct1:
+                strategy_used = "1% Strategy"
+                optimal_strategy_signal = pct1_signal
+                optimal_transactions = pct1_transactions
+            elif max_returns == returns_ema:
+                strategy_used = "EMA Strategy"
+                optimal_strategy_signal = ema_signal
+                optimal_transactions = ema_transactions
+            elif max_returns == returns_smi:
+                strategy_used = "SMI Strategy"
+                optimal_strategy_signal = smi_signal
+                optimal_transactions = smi_transactions
+            elif max_returns == returns_rsi:
+                strategy_used = "RSI Strategy"
+                optimal_strategy_signal = rsi_signal
+                optimal_transactions = rsi_transactions
+            elif max_returns == returns_buy_hold:
+                strategy_used = "Buy & Hold Strategy"
+                optimal_strategy_signal = buy_hold_signal
+                optimal_transactions = []  # No transactions for Buy & Hold strategy
+            else:
+                strategy_used = "Control Strategy"
+                optimal_strategy_signal = control_strategy_signal
+                optimal_transactions = []  # No transactions for Control strategy
+
+            transaction_df_list.append(pd.DataFrame(optimal_transactions, columns=['Transaction', 'Date', 'Price']))
+
+
+            # Display results
+            years = (end_date - start_date).days / 365
+            cagr_optimal = calculate_cagr(initial_capital, total_returns_optimal, years)
+            cagr_control = calculate_cagr(initial_capital, total_returns_control, years)
+            st.write("\nCAGR for Optimal Strategy:", cagr_optimal, "%")
+            st.write("CAGR for Control Strategy:", cagr_control, "%")
+            st.write("Total Returns with Optimal Strategy:", total_returns_optimal)
+            st.write(f"For {stock_name}, the optimal strategy is {strategy_used} with returns: {max_returns}")
+            plt.plot(data.index, data['Close'][0] * optimal_strategy_signal.cumsum(), label='Optimal Strategy')
+            # plt.plot(data.index, data['Close'][0] * control_strategy_signal.cumsum(), label='Control Strategy')
+            plt.xlabel('Date')
+            plt.ylabel('Price')
+            plt.title('Stock Price')
+            # plt.legend()
+            plt.show()
+
+            st.pyplot(plt)  # Show the plot for each stock
+
+        st.write("Total Returns with Optimal Strategy:", total_returns_optimal)
+        st.write("Total Returns with Control Strategy (Combined):", total_returns_control)
+        st.write("*************************************************")
+
+        combined_transaction_df = pd.concat(transaction_df_list, ignore_index=True)
+        st.write("\nTransaction DataFrame:")
+        st.write(combined_transaction_df)
+        st.write("*************************************************")
+        combined_transaction_df.to_csv('transactions.csv')
+
+        years = (end_date - start_date).days / 365
+        cagr_optimal = calculate_cagr(initial_capital, total_returns_optimal, years)
+        cagr_control = calculate_cagr(initial_capital, total_returns_control, years)
+
+        st.write("\nCAGR for Optimal Strategy:", cagr_optimal, "%")
+        st.write("CAGR for Control Strategy:", cagr_control, "%")
+        # st.write("-x-x-x-x-x-x-x-x-x-x-x-x")
+
+    # if __name__ == "__main__":
+    #     main()
+    a = analysis_page()
+
     # Add content for Analysis page here
 
-def wishlist():
-    st.title("Wishlist Page")
-    # Add content for Wishlist page here
+# def wishlist():
+#     st.title("Wishlist Page")
+#     # Add content for Wishlist page here
 
-def rebalancing():
-    st.title("Rebalancing Page")
+# def rebalancing():
+#     st.title("Rebalancing Page")
     # Add content for Rebalancing page here
 
 def about_us():

@@ -1,5 +1,5 @@
 import streamlit as st
-from pages import home, get_score, portfolio, analysis, wishlist, rebalancing, about_us
+from pages import home, get_score, portfolio, analysis, about_us
 
 # Page navigation
 PAGES = {
@@ -7,8 +7,8 @@ PAGES = {
     "Get Score": get_score,
     "Portfolio": portfolio,
     "Analysis": analysis,
-    "Wishlist": wishlist,
-    "Rebalancing": rebalancing,
+    # "Wishlist": wishlist,
+    # "Rebalancing": rebalancing,
     "About Us": about_us,
 }
 
