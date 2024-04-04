@@ -435,12 +435,12 @@ def analysis():
 
 
             # Display results
-            years = (end_date - start_date).days / 365
-            cagr_optimal = calculate_cagr(initial_capital, total_returns_optimal, years)
-            cagr_control = calculate_cagr(initial_capital, total_returns_control, years)
-            st.write("\nCAGR for Optimal Strategy:", cagr_optimal, "%")
-            st.write("CAGR for Control Strategy:", cagr_control, "%")
-            st.write("Total Returns with Optimal Strategy:", total_returns_optimal)
+            # years = (end_date - start_date).days / 365
+            # cagr_optimal = calculate_cagr(initial_capital, total_returns_optimal, years)
+            # cagr_control = calculate_cagr(initial_capital, total_returns_control, years)
+            # st.write("\nCAGR for Optimal Strategy:", cagr_optimal, "%")
+            # st.write("CAGR for Control Strategy:", cagr_control, "%")
+            # st.write("Total Returns with Optimal Strategy:", total_returns_optimal)
             st.write(f"For {stock_name}, the optimal strategy is {strategy_used} with returns: {max_returns}")
             plt.plot(data.index, data['Close'][0] * optimal_strategy_signal.cumsum(), label='Optimal Strategy')
             # plt.plot(data.index, data['Close'][0] * control_strategy_signal.cumsum(), label='Control Strategy')
@@ -483,7 +483,176 @@ def analysis():
 # def rebalancing():
 #     st.title("Rebalancing Page")
     # Add content for Rebalancing page here
+def check_strat():
+    # st.title("Check your stratergy")
+    import streamlit as st
+    import yfinance as yf
+    from datetime import datetime, timedelta
+    import numpy as np
+    from ta.momentum import RSIIndicator
+    from ta.trend import EMAIndicator, MACD
+    from ta.volatility import BollingerBands
+
+    # Function to calculate CAGR
+    def calculate_cagr(initial_value, final_value, years):
+        cagr = ((final_value / initial_value) ** (1 / years) - 1) * 100
+        return round(cagr, 3)
+
+    # Function to calculate returns based on CAGR
+    def calculate_returns(initial_value, cagr, years):
+        final_value = initial_value * ((1 + cagr / 100) ** years)
+        return round(final_value - initial_value, 2)
+
+    # Function to fetch stock data
+    def fetch_stock_data(stock_name, start_date, end_date):
+        stock_data = yf.download(stock_name, start=start_date, end=end_date)
+        return stock_data
+
+    # SMI (Stochastic Momentum Index) Strategy
+    def smi_strategy(data):
+        high_14 = data['High'].rolling(window=14).max()
+        low_14 = data['Low'].rolling(window=14).min()
+
+        smi = ((data['Close'] - low_14) / (high_14 - low_14)) * 100
+        smi_signal = np.where(smi > 40, 1, 0)
+        smi_signal = np.where(smi < -40, -1, smi_signal)
+        return smi_signal
+
+    # EMA (Exponential Moving Average) Strategy
+    def ema_strategy(data):
+        ema_20 = EMAIndicator(data['Close'], window=20).ema_indicator()
+        ema_50 = EMAIndicator(data['Close'], window=50).ema_indicator()
+
+        signal = np.where(ema_20 > ema_50, 1, 0)
+        signal = np.where(ema_20 < ema_50, -1, signal)
+        return signal
+
+    # MACD (Moving Average Convergence Divergence) Strategy
+    def macd_strategy(data):
+        macd = MACD(data['Close']).macd()
+        signal_line = MACD(data['Close']).macd_signal()
+
+        signal = np.where(macd > signal_line, 1, 0)
+        signal = np.where(macd < signal_line, -1, signal)
+        return signal
+
+    # Moving Average Crossover Strategy
+    def moving_average_crossover_strategy(data):
+        short_ma = data['Close'].rolling(window=20).mean()
+        long_ma = data['Close'].rolling(window=50).mean()
+
+        signal = np.where(short_ma > long_ma, 1, 0)
+        signal = np.where(short_ma < long_ma, -1, signal)
+        return signal
+
+    # Bollinger Band Trading Strategy
+    def bollinger_band_trading_strategy(data):
+        bb = BollingerBands(data['Close'])
+        upper_band = bb.bollinger_hband()
+        lower_band = bb.bollinger_lband()
+
+        signal = np.where(data['Close'] < lower_band, 1, 0)
+        signal = np.where(data['Close'] > upper_band, -1, signal)
+        return signal
+
+    # RSI (Relative Strength Index) and MACD Strategy
+    def rsi_and_macd_strategy(data):
+        rsi = RSIIndicator(data['Close'], window=14).rsi()
+        macd = MACD(data['Close']).macd()
+
+        signal = np.where(rsi < 30, 1, 0)  # Buy signal when RSI is below 30
+        signal = np.where((rsi > 70) | (macd < 0), -1, signal)  # Sell signal when RSI is above 70 or MACD is negative
+        return signal
+
+    # 1% Strategy
+    def pct1_strategy(data):
+        buy_price = data['Close'] * 0.99
+        sell_price = data['Close'] * 1.01
+
+        signal = np.zeros(len(data))
+        for i in range(1, len(data)):
+            if data['Close'][i] < buy_price[i-1]:
+                signal[i] = 1
+            elif data['Close'][i] > sell_price[i-1]:
+                signal[i] = -1
+        return signal
+
+    # Buy and Hold Strategy
+    def buy_and_hold_strategy(data):
+        signal = np.zeros(len(data))
+        signal[0] = 1  # Buy at start date
+        signal[-1] = -1  # Sell at end date
+        return signal
+
+    # Mean Reversion Strategy
+    def mean_reversion_strategy(data):
+        mean_price = data['Close'].rolling(window=20).mean()
+        std_price = data['Close'].rolling(window=20).std()
+
+        upper_bound = mean_price + 2 * std_price
+        lower_bound = mean_price - 2 * std_price
+
+        signal = np.zeros(len(data))
+        signal = np.where(data['Close'] < lower_bound, 1, signal)  # Buy signal when price is below lower bound
+        signal = np.where(data['Close'] > upper_bound, -1, signal)  # Sell signal when price is above upper bound
+        return signal
+
+    def checkers():
+        st.title("Stock Strategy Analysis")
+
+        # Input fields
+        stock_name = st.text_input("Enter Stock Ticker Name (e.g., HDFCBANK.NS)")
+        strategy = st.selectbox("Select Strategy", ["SMI", "EMA", "MACD", "Moving Average Crossover", "Bollinger Band Trading", "RSI and MACD", "1% Strategy", "Buy and Hold", "Mean Reversion"])
+        years = st.number_input("Enter Number of Years", min_value=1, max_value=25, step=1)
+        initial_capital = st.number_input("Enter Initial Capital", min_value=0, step=1000)
+
+        if st.button("Run Analysis"):
+            # Fetching start and end dates based on number of years
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=years * 365)).strftime('%Y-%m-%d')
+
+            # Fetch stock data
+            stock_data = fetch_stock_data(stock_name, start_date, end_date)
+
+            # Apply selected strategy
+            if strategy == "SMI":
+                strategy_signal = smi_strategy(stock_data)
+            elif strategy == "EMA":
+                strategy_signal = ema_strategy(stock_data)
+            elif strategy == "MACD":
+                strategy_signal = macd_strategy(stock_data)
+            elif strategy == "Moving Average Crossover":
+                strategy_signal = moving_average_crossover_strategy(stock_data)
+            elif strategy == "Bollinger Band Trading":
+                strategy_signal = bollinger_band_trading_strategy(stock_data)
+            elif strategy == "RSI and MACD":
+                strategy_signal = rsi_and_macd_strategy(stock_data)
+            elif strategy == "1% Strategy":
+                strategy_signal = pct1_strategy(stock_data)
+            elif strategy == "Buy and Hold":
+                strategy_signal = buy_and_hold_strategy(stock_data)
+            elif strategy == "Mean Reversion":
+                strategy_signal = mean_reversion_strategy(stock_data)
+
+            # Calculate CAGR
+            initial_value = stock_data['Close'].iloc[0]
+            final_value = stock_data['Close'].iloc[-1]
+            cagr = calculate_cagr(initial_value, final_value, years)
+
+            # Calculate returns based on CAGR
+            returns = calculate_returns(initial_capital, cagr, years)
+
+            # Display results
+            st.write("CAGR using", strategy, "strategy for the past", years, "years:", cagr, "%")
+            st.write("Probable returns based on CAGR:", returns)
+
+
+    ab = checkers()
+
+
+
 
 def about_us():
     st.title("About Us Page")
+
     # Add content for About Us page here
