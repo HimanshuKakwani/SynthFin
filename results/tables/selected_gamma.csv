@@ -1,0 +1,4 @@
+RiskProfile,SelectedGamma
+conservative,0.01
+moderate,0.01
+aggressive,0.005
