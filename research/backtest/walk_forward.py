@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import argparse
 import numpy as np
 import pandas as pd
 
@@ -190,15 +191,14 @@ def generate_predictions(
     )
 
 
-def get_rebalance_dates():
+def get_rebalance_dates(reference_ticker="RELIANCE.NS"):
+
 
     # Use actual trading dates from the
     # processed stock data rather than
     # inventing calendar dates.
 
-    sample = load_stock(
-        "RELIANCE.NS"
-    )
+    sample = load_stock(reference_ticker)
 
     if sample is None:
 
@@ -217,15 +217,15 @@ def get_rebalance_dates():
     return dates
 
 
-def run_walk_forward():
+def run_walk_forward(universe_path="data/universe.csv", max_tickers=None, output_path="results/tables/walk_forward_predictions.csv"):
 
     tickers = load_universe(
-        max_tickers=20
+        path=universe_path,
+        max_tickers=max_tickers,
     )
 
-    rebalance_dates = (
-        get_rebalance_dates()
-    )
+    reference_ticker = tickers[0] if tickers else "RELIANCE.NS"
+    rebalance_dates = get_rebalance_dates(reference_ticker)
 
     # We don't want to train 1000+ times.
     # Retrain once per year and generate
@@ -380,27 +380,18 @@ def run_walk_forward():
         ]
     )
 
-    Path(
-        "results/tables"
-    ).mkdir(
+    Path(output_path).parent.mkdir(
         parents=True,
         exist_ok=True
     )
 
     result.to_csv(
-        "results/tables/"
-        "walk_forward_predictions.csv",
+        output_path,
         index=False
     )
 
-    print(
-        "\nSaved:"
-    )
-
-    print(
-        "results/tables/"
-        "walk_forward_predictions.csv"
-    )
+    print("\nSaved:")
+    print(output_path)
 
     print(
         f"\nRows: {len(result):,}"
@@ -420,5 +411,9 @@ def run_walk_forward():
 
 
 if __name__ == "__main__":
-
-    run_walk_forward()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--universe", default="data/universe.csv")
+    parser.add_argument("--max-tickers", type=int, default=None)
+    parser.add_argument("--output", default="results/tables/walk_forward_predictions.csv")
+    args = parser.parse_args()
+    run_walk_forward(args.universe, args.max_tickers, args.output)
