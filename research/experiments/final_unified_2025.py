@@ -115,9 +115,23 @@ def make_portfolio(current, historical, previous_weights, strategy, profile=None
         return _equal_weights(_xgb_top10(current, 10))
 
     if strategy == "XGB_Risk":
+        selected = _xgb_top10(current, 10)
+
+        if not selected:
+            return pd.Series(dtype=float)
+
+        selected_historical = historical[
+            [
+                t for t in selected
+                if t in historical.columns
+            ]
+        ]
+
         return optimize_portfolio(
-            predictions=current,
-            historical_returns=historical,
+            predictions=current[
+                current["Ticker"].isin(selected)
+            ],
+            historical_returns=selected_historical,
             previous_weights=previous_weights,
             k=10,
             risk_aversion=risk_aversion_for_profile(profile),
@@ -128,9 +142,23 @@ def make_portfolio(current, historical, previous_weights, strategy, profile=None
         )
 
     if strategy == "XGB_TurnoverAware":
+        selected = _xgb_top10(current, 10)
+
+        if not selected:
+            return pd.Series(dtype=float)
+
+        selected_historical = historical[
+            [
+                t for t in selected
+                if t in historical.columns
+            ]
+        ]
+
         return optimize_portfolio(
-            predictions=current,
-            historical_returns=historical,
+            predictions=current[
+                current["Ticker"].isin(selected)
+            ],
+            historical_returns=selected_historical,
             previous_weights=previous_weights,
             k=10,
             risk_aversion=risk_aversion_for_profile(profile),
@@ -143,40 +171,119 @@ def make_portfolio(current, historical, previous_weights, strategy, profile=None
     raise ValueError(strategy)
 
 
+def _simulate_holding_period(period_returns, start_weights):
+    tickers = list(start_weights.index)
+    wealth = start_weights.astype(float).copy()
+
+    for date in period_returns.index:
+        daily_returns = (
+            period_returns.loc[date, tickers]
+            .fillna(0.0)
+            .astype(float)
+        )
+        wealth = wealth * (1.0 + daily_returns)
+
+    ending_value = wealth.sum()
+
+    if ending_value <= 0:
+        return np.nan, pd.Series(dtype=float)
+
+    end_weights = wealth / ending_value
+    gross_return = ending_value - 1.0
+
+    return gross_return, end_weights
+
+
 def run_strategy(predictions, returns, strategy, profile=None):
-    dates = np.array(sorted(pd.to_datetime(predictions["Date"]).unique()))
+    dates = np.array(
+        sorted(pd.to_datetime(predictions["Date"]).unique())
+    )
     rebalance_dates = dates[::HOLDING_DAYS]
     universe = list(returns.columns)
+
     previous_weights = None
     capital = INITIAL_CAPITAL
     rows = []
 
     for date in rebalance_dates:
         idx = np.where(dates == date)[0][0]
-        future_dates = dates[idx + 1: idx + 1 + HOLDING_DAYS]
+
+        future_dates = dates[
+            idx + 1:idx + 1 + HOLDING_DAYS
+        ]
+
         if len(future_dates) < HOLDING_DAYS:
             continue
 
-        current = predictions[predictions["Date"] == date].copy()
-        historical = returns.loc[returns.index < date]
+        current = predictions[
+            predictions["Date"] == date
+        ].copy()
+
+        historical = returns.loc[
+            returns.index < date
+        ]
+
         if current.empty or historical.empty:
             continue
 
-        weights = make_portfolio(current, historical, previous_weights, strategy, profile, universe)
+        weights = make_portfolio(
+            current,
+            historical,
+            previous_weights,
+            strategy,
+            profile,
+            universe,
+        )
+
         if weights is None or weights.empty:
             continue
-        available = [t for t in weights.index if t in returns.columns]
+
+        available = [
+            t for t in weights.index
+            if t in returns.columns
+        ]
+
         weights = weights[available]
+
         if weights.empty:
             continue
+
         weights = weights / weights.sum()
 
-        period = returns.loc[future_dates, available]
-        gross_return = (1 + (period * weights).sum(axis=1)).prod() - 1
-        current_turnover = turnover(previous_weights, weights)
-        transaction_cost = current_turnover * COST_BPS / 10000.0
-        net_return = gross_return - transaction_cost
-        capital *= 1 + net_return
+        period = returns.loc[
+            future_dates,
+            available
+        ]
+
+        gross_return, ending_weights = (
+            _simulate_holding_period(
+                period,
+                weights
+            )
+        )
+
+        if not np.isfinite(gross_return):
+            continue
+
+        current_turnover = turnover(
+            previous_weights,
+            weights
+        )
+
+        transaction_cost = (
+            current_turnover
+            * COST_BPS
+            / 10000.0
+        )
+
+        net_growth = (
+            (1.0 - transaction_cost)
+            * (1.0 + gross_return)
+        )
+
+        net_return = net_growth - 1.0
+
+        capital *= net_growth
 
         rows.append({
             "Date": date,
@@ -190,10 +297,10 @@ def run_strategy(predictions, returns, strategy, profile=None):
             "RiskProfile": profile or "",
             "CostBps": COST_BPS,
         })
-        previous_weights = weights.copy()
+
+        previous_weights = ending_weights.copy()
 
     return pd.DataFrame(rows)
-
 
 def main():
     predictions = pd.read_csv(PREDICTIONS, parse_dates=["Date"])

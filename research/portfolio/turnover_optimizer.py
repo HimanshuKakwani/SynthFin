@@ -166,30 +166,63 @@ def _build_inputs(
     no prediction values are used anywhere in the expected-return vector.
     """
     universe = list(historical_returns.columns)
+
     if not universe:
         return None
 
-    recent = historical_returns[universe].tail(60).copy()
-    valid = [t for t in universe if recent[t].notna().sum() >= 20]
+    recent = historical_returns[
+        universe
+    ].tail(60).copy()
+
+    valid = [
+        t for t in universe
+        if recent[t].notna().sum() >= 20
+    ]
+
     if not valid:
         return None
+
     recent = recent[valid]
 
-    expected_returns = pd.Series(0.0, index=valid, dtype=float)
+    expected_returns = pd.Series(
+        0.0,
+        index=valid,
+        dtype=float,
+    )
 
     if use_prediction_signal:
         if predictions is None:
-            raise ValueError("predictions are required when use_prediction_signal=True")
+            raise ValueError(
+                "predictions are required when "
+                "use_prediction_signal=True"
+            )
+
         pred = (
-            predictions.dropna(subset=["Prediction"])
-            .sort_values("Prediction", ascending=False)
-            .drop_duplicates(subset=["Ticker"])
+            predictions
+            .dropna(subset=["Prediction"])
+            .sort_values(
+                "Prediction",
+                ascending=False
+            )
+            .drop_duplicates(
+                subset=["Ticker"]
+            )
             .set_index("Ticker")
         )
-        selected = pred.loc[pred.index.intersection(valid)].head(k)
-        if not selected.empty:
-            expected_returns.loc[selected.index] = selected["Prediction"].astype(float)
 
+        selected = (
+            pred.loc[
+                pred.index.intersection(valid)
+            ]
+            .head(k)
+        )
+
+        if selected.empty:
+            return None
+
+        expected_returns.loc[
+            selected.index
+        ] = selected["Prediction"].astype(float)
     covariance = recent.cov().fillna(0.0).values
     covariance = covariance + np.eye(len(valid)) * 1e-6
 

@@ -10,29 +10,55 @@ Prerequisites:
 from pathlib import Path
 import pandas as pd
 
-from research.experiments.final_unified_2025 import load_prices, run_strategy, calculate_metrics
-
+import research.experiments.final_unified_2025 as unified
 PRED = Path("results/tables/walk_forward_predictions_50.csv")
 OUT = Path("results/tables/REVISION_50STOCK_2025.csv")
 
 
 def main():
-    predictions = pd.read_csv(PRED, parse_dates=["Date"])
-    predictions = predictions[predictions["Date"].dt.year == 2025].copy()
-    tickers = sorted(predictions["Ticker"].unique())
-    prices = load_prices(tickers)
+    predictions = pd.read_csv(
+    PRED,
+    parse_dates=["Date"]
+)
+
+    predictions = predictions[
+        predictions["Date"].dt.year == 2025
+    ].copy()
+
+    tickers = sorted(
+        predictions["Ticker"].unique()
+    )
+
+    assert len(tickers) == 50, (
+        f"Expected 50-stock robustness universe, "
+        f"found {len(tickers)}"
+    )
+
+    print(
+        f"Expanded universe: "
+        f"{len(tickers)} unique stocks"
+    )
+
+    unified.DATA_DIR = Path("data/processed_50")
+
+    prices = unified.load_prices(tickers)
     returns = prices.pct_change()
 
     rows = []
     for strategy, profile in [
-        ("BuyHold", None),
-        ("EqualWeight", None),
-        ("RiskOnly", None),
-        ("XGB_EqualWeight", None),
-        ("XGB_Risk", "aggressive"),
-        ("XGB_TurnoverAware", "aggressive"),
-    ]:
-        h = run_strategy(predictions, returns, strategy, profile)
+    ("BuyHold", None),
+    ("EqualWeight", None),
+    ("RiskOnly", None),
+    ("XGB_EqualWeight", None),
+    ("XGB_Risk", "moderate"),
+    ("XGB_TurnoverAware", "moderate"),
+]:
+        h = unified.run_strategy(
+            predictions,
+            returns,
+            strategy,
+            profile,
+        )
         if h.empty:
             continue
         rows.append({
@@ -40,7 +66,7 @@ def main():
             "NStocksAvailable": len(tickers),
             "Strategy": strategy,
             "RiskProfile": profile or "",
-            **calculate_metrics(h),
+            **unified.calculate_metrics(h),
         })
 
     result = pd.DataFrame(rows)

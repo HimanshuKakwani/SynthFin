@@ -107,7 +107,11 @@ def generate_predictions(
 
         train = df[
             df.index <= train_end
-        ].copy()
+            ].copy()
+        if len(train) > FORECAST_HORIZON:
+            train = train.iloc[:-FORECAST_HORIZON]
+        else:
+            continue
 
         test = df[
             df.index == prediction_date
@@ -285,7 +289,12 @@ def run_walk_forward(
 
             train = df[
                 df.index <= train_end
-            ].copy()
+                ].copy()
+
+            if len(train) > FORECAST_HORIZON:
+                train = train.iloc[:-FORECAST_HORIZON]
+            else:
+                continue
 
             train = train.dropna(
                 subset=FEATURE_COLUMNS
