@@ -221,7 +221,7 @@ def gamma_validation():
     predictions = predictions[predictions["Date"].dt.year.between(2022, 2024)].copy()
     prices = load_prices(sorted(predictions["Ticker"].unique()))
     returns = prices.pct_change()
-    gammas = [0.0, 0.0025, 0.005, 0.01, 0.02, 0.04, 0.08]
+    gammas = [0.0, 0.005, 0.01, 0.02]
     rows = []
     from research.portfolio.turnover_optimizer import optimize_portfolio, turnover, risk_aversion_for_profile
 

@@ -3,6 +3,146 @@ import pandas as pd
 from scipy.optimize import minimize
 
 
+def ml_equal_weights(tickers):
+    """Equal-weight allocation across the supplied ML-selected tickers."""
+    tickers = list(tickers)
+
+    if not tickers:
+        return pd.Series(dtype=float)
+
+    return pd.Series(
+        1.0 / len(tickers),
+        index=tickers,
+        dtype=float,
+    )
+
+
+def risk_only_weights(
+    tickers,
+    historical_returns,
+    k=10,
+    max_weight=0.20,
+):
+    """
+    Prediction-independent risk-only portfolio.
+
+    Selection is based exclusively on historical volatility available
+    before the rebalance date. No ML predictions are used.
+
+    Steps:
+        1. Use the most recent 60 historical observations.
+        2. Remove stocks with insufficient history.
+        3. Select the k lowest-volatility stocks.
+        4. Allocate inverse-volatility weights.
+        5. Apply the maximum-weight constraint.
+    """
+    universe = [
+        ticker
+        for ticker in tickers
+        if ticker in historical_returns.columns
+    ]
+
+    if not universe:
+        return pd.Series(dtype=float)
+
+    recent = historical_returns[universe].tail(60)
+
+    # Require sufficient historical observations.
+    valid = [
+        ticker
+        for ticker in universe
+        if recent[ticker].notna().sum() >= 20
+    ]
+
+    if not valid:
+        return pd.Series(dtype=float)
+
+    recent = recent[valid]
+
+    # Historical volatility only.
+    volatility = recent.std(ddof=1)
+
+    volatility = volatility.replace(
+        [np.inf, -np.inf],
+        np.nan,
+    ).dropna()
+
+    volatility = volatility[volatility > 1e-12]
+
+    if volatility.empty:
+        return pd.Series(dtype=float)
+
+    # Lowest-volatility Top-K.
+    selected = volatility.sort_values(
+        ascending=True
+    ).head(k)
+
+    if selected.empty:
+        return pd.Series(dtype=float)
+
+    # Inverse-volatility allocation.
+    raw_weights = 1.0 / selected
+
+    weights = raw_weights / raw_weights.sum()
+
+    # Enforce max weight while redistributing excess.
+    weights = _cap_weights(
+        weights,
+        max_weight=max_weight,
+    )
+
+    return weights
+
+
+def _cap_weights(weights, max_weight=0.20):
+    """
+    Cap individual weights and redistribute excess
+    proportionally among uncapped positions.
+    """
+    weights = weights.astype(float).copy()
+
+    if weights.empty:
+        return weights
+
+    if max_weight * len(weights) < 1.0 - 1e-10:
+        raise ValueError(
+            f"Infeasible max_weight: "
+            f"{len(weights)} assets x {max_weight} < 1"
+        )
+
+    # Start normalized.
+    weights = weights / weights.sum()
+
+    for _ in range(100):
+        over = weights > max_weight + 1e-12
+
+        if not over.any():
+            break
+
+        excess = (
+            weights[over] - max_weight
+        ).sum()
+
+        weights[over] = max_weight
+
+        under = ~over
+
+        if not under.any():
+            break
+
+        remaining = weights[under]
+
+        if remaining.sum() <= 1e-12:
+            weights[under] = 1.0 / under.sum()
+        else:
+            weights[under] += (
+                excess * remaining / remaining.sum()
+            )
+
+    weights = weights / weights.sum()
+
+    return weights
+
 def turnover(previous_weights, new_weights):
     """L1 turnover. Initial investment from cash is turnover=1."""
     if previous_weights is None:

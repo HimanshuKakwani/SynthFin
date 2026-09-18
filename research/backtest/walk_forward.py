@@ -14,9 +14,7 @@ from research.features.technical_features import (
 )
 
 
-DATA_DIR = Path(
-    "data/processed"
-)
+DATA_DIR = Path("data/processed")
 
 
 TRAIN_START = "2018-01-01"
@@ -31,7 +29,6 @@ FORECAST_HORIZON = 5
 
 
 def load_stock(ticker):
-
     filename = (
         ticker.replace("/", "_")
         + ".csv"
@@ -217,8 +214,14 @@ def get_rebalance_dates(reference_ticker="RELIANCE.NS"):
     return dates
 
 
-def run_walk_forward(universe_path="data/universe.csv", max_tickers=None, output_path="results/tables/walk_forward_predictions.csv"):
-
+def run_walk_forward(
+    universe_path="data/universe.csv",
+    max_tickers=None,
+    output_path="results/tables/walk_forward_predictions.csv",
+    data_dir="data/processed",
+):
+    global DATA_DIR
+    DATA_DIR = Path(data_dir)
     tickers = load_universe(
         path=universe_path,
         max_tickers=max_tickers,
@@ -415,5 +418,11 @@ if __name__ == "__main__":
     parser.add_argument("--universe", default="data/universe.csv")
     parser.add_argument("--max-tickers", type=int, default=None)
     parser.add_argument("--output", default="results/tables/walk_forward_predictions.csv")
+    parser.add_argument("--data-dir", default="data/processed")
     args = parser.parse_args()
-    run_walk_forward(args.universe, args.max_tickers, args.output)
+    run_walk_forward(
+    args.universe,
+    args.max_tickers,
+    args.output,
+    args.data_dir,
+)

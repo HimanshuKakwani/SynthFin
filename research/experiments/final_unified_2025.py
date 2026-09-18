@@ -14,11 +14,12 @@ import os
 import numpy as np
 import pandas as pd
 
-from research.portfolio.optimizer import risk_only_weights, ml_equal_weights
 from research.portfolio.turnover_optimizer import (
     optimize_portfolio,
     turnover,
     risk_aversion_for_profile,
+    risk_only_weights,
+    ml_equal_weights,
 )
 
 PREDICTIONS = Path("results/tables/walk_forward_predictions.csv")
