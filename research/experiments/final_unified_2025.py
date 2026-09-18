@@ -2,7 +2,7 @@
 
 Key corrections:
 1. BuyHold is prediction-independent and never rebalances.
-2. EqualWeight is prediction-independent and uses the full 20-stock universe.
+2. EqualWeight is prediction-independent and uses the full evaluation universe.
 3. RiskOnly uses historical volatility only; no ML prediction enters selection.
 4. XGB EqualWeight uses XGB Top-10 ranking + equal weights.
 5. XGB Risk uses XGB Top-10 ranking + risk-aware optimization.
